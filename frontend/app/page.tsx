@@ -1,11 +1,5 @@
-import React from 'react'
+import { redirect } from 'next/navigation';
 
-const Home = () => {
-  return (
-    <div className='flex items-center justify-center h-screen'>
-      Home
-    </div>
-  )
+export default function Home() {
+  redirect('/sign-in');
 }
-
-export default Home
