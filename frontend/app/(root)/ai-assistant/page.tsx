@@ -13,20 +13,18 @@ const Chatbot = () => {
 
   const { isCollapsed } = useSidebar();
 
-  const handleSend = async () => {
+  const handleSend = async (userMessage: Message) => {
     setLoading(true)
     
     try {
-      const lastMessage = messages[messages.length - 1]
-      
       const response = await fetch('http://localhost:5000/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: lastMessage.content,
-          userId: 'user123' // TODO: Replace with actual user ID from auth
+          message: userMessage.content,
+          userId:  "6990b299b2e7dae3a40aa21b" // TODO: Replace with actual user ID from auth
         })
       })
 
@@ -75,7 +73,7 @@ const Chatbot = () => {
       timestamp: new Date()
     }
     setMessages(prev => [...prev, newMessage])
-    handleSend()
+    handleSend(newMessage)
   }
 
   return (
