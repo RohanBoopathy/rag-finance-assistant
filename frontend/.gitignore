@@ -49,3 +49,5 @@ Thumbs.db
 # Misc
 .parcel-cache/
 .turbo/
+
+/ai-chat-history.md

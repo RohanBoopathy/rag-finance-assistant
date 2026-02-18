@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, KeyboardEvent } from 'react'
-import { Send } from 'lucide-react'
+import { ArrowRightToLine } from 'lucide-react'
 
 const ChatInput = ({ onSendMessage, disabled = false }: ChatInputProps) => {
   const [input, setInput] = useState('')
@@ -42,7 +42,7 @@ const ChatInput = ({ onSendMessage, disabled = false }: ChatInputProps) => {
           className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg p-3 transition-colors"
           aria-label="Send message"
         >
-          <Send className="w-5 h-5" />
+          <ArrowRightToLine className='w-5 h-5' />
         </button>
       </div>
       <p className="text-xs text-gray-500 mt-2">Press Enter to send, Shift + Enter for new line</p>

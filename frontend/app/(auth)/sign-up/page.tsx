@@ -3,13 +3,43 @@
 import FooterLink from "@/components/form/FooterLink"
 import InputField from "@/components/form/InputField"
 import { useRouter } from "next/navigation"
+import { useState } from "react"
 
 const SignUp = () => {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("")
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SubmitEvent) => {
     e.preventDefault();
-    router.push('/dashboard');
+    setLoading(true);
+
+    try{
+      setError("")
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: (e.target as HTMLFormElement).fullname.value,
+          email: (e.target as HTMLFormElement).email.value,
+          password: (e.target as HTMLFormElement).password.value
+        })
+      })
+
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.message || "Failed to Sign Up")
+        throw new Error("Failed to Sign Up")
+      }
+
+      router.push('/sign-in')
+
+    } catch (error) {
+        console.error("Unable to Sign Up", error)
+    } finally {
+        setLoading(false)
+    }
   };
 
   return (
