@@ -2,19 +2,34 @@
 
 import FooterLink from "@/components/form/FooterLink"
 import InputField from "@/components/form/InputField"
+import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import { useState } from "react"
 
 const SignIn = () => {
   const router = useRouter();
+  const [error, setError] = useState("")
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    router.push('/dashboard');
+    const res = await signIn('credentials', {
+      redirect: false,
+      email: (e.target as any).email.value,
+      password: (e.target as any).password.value,
+    })
+
+    if (res?.error) {
+      setError("Invalid email or password")
+    } else {
+      router.push("/dashboard");
+    }
   };
 
   return (
     <>
       <h1 className="text-xl text-center mb-10">Welcome Back..!</h1>
+
+      { error && <p className="text-red-500">{error}</p> }
 
       <form className="w-75 flex flex-col space-y-5" onSubmit={handleSubmit}>
         <InputField 
