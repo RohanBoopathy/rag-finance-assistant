@@ -28,8 +28,9 @@ const authOptions = {
 
           if (data.token) {
             return {
-              id: data.token,
-              email: credentials?.email,
+              id: data.user?.id || data.token,
+              name: data.user?.name,
+              email: data.user?.email || credentials?.email,
               token: data.token,
             }
           }
@@ -45,11 +46,17 @@ const authOptions = {
     async jwt({ token, user }: { token: any, user: any }) {
       if (user) {
         token.accessToken = (user as any).token;
+        token.name = user.name;
+        token.email = user.email;
       }
       return token;
     },
     async session({ session, token }: { session: any, token: any }) {
         session.accessToken = token.accessToken
+        session.user = {
+          name: token.name,
+          email: token.email,
+        }
       return session
     }
   },
