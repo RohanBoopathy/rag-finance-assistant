@@ -3,28 +3,61 @@
 import CustomHeader from '@/components/CustomHeader'
 import { useSidebar } from '@/contexts/SidebarContext'
 import { useEffect, useRef, useState } from 'react'
-import { Message } from '@/types/chat'
+import { ConversationDetail, Message } from '@/types/chat'
 import MessageList from '@/components/assistant/MessageList'
 import ChatInput from '@/components/assistant/ChatInput'
+import { useSession } from 'next-auth/react'
+
+const API_BASE_URL = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api`
 
 const Chatbot = () => {
+  const { data: session } = useSession();
+  const USER_ID = (session?.user as { _id?: string; id?: string } | undefined)?._id
+    ?? (session?.user as { _id?: string; id?: string } | undefined)?.id;
+  const ACCESS_TOKEN = (session as { accessToken?: string } | undefined)?.accessToken;
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
 
   const { isCollapsed } = useSidebar();
 
+  const loadConversation = async (conversationId: string) => {
+    if (!USER_ID) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}?userId=${USER_ID}`);
+      if (!response.ok) return;
+
+      const conversation: ConversationDetail = await response.json();
+      const loadedMessages = conversation.messages.map((message, index) => ({
+        id: `${conversation._id}-${index}`,
+        role: message.role,
+        content: message.content,
+        timestamp: new Date(message.timestamp)
+      }));
+
+      setMessages(loadedMessages);
+      setCurrentConversationId(conversationId);
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+    }
+  }
+
   const handleSend = async (userMessage: Message) => {
+    if (!USER_ID || !ACCESS_TOKEN) return;
     setLoading(true)
     
     try {
-      const response = await fetch('http://localhost:5000/api/chat', {
+      const response = await fetch(`${API_BASE_URL}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${ACCESS_TOKEN}`
         },
         body: JSON.stringify({
           message: userMessage.content,
-          userId:  "6990b299b2e7dae3a40aa21b" // TODO: Replace with actual user ID from auth
+          userId: USER_ID,
+          conversationId: currentConversationId
         })
       })
 
@@ -33,6 +66,9 @@ const Chatbot = () => {
       }
 
       const data = await response.json()
+      if (data.conversationId) {
+        setCurrentConversationId(data.conversationId);
+      }
       
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -42,6 +78,7 @@ const Chatbot = () => {
       }
       
       setMessages(prev => [...prev, aiMessage])
+      window.dispatchEvent(new CustomEvent('ai-chat:refresh-conversations'));
     } catch (error) {
       console.error('Error sending message:', error)
       const errorMessage: Message = {
@@ -64,6 +101,29 @@ const Chatbot = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages])
+
+  useEffect(() => {
+    const handleSelectConversation = (event: Event) => {
+      const customEvent = event as CustomEvent<{ conversationId: string }>;
+      const conversationId = customEvent.detail?.conversationId;
+      if (conversationId) {
+        loadConversation(conversationId);
+      }
+    };
+
+    const handleNewConversation = () => {
+      setCurrentConversationId(null);
+      setMessages([]);
+    };
+
+    window.addEventListener('ai-chat:select-conversation', handleSelectConversation as EventListener);
+    window.addEventListener('ai-chat:new-conversation', handleNewConversation);
+
+    return () => {
+      window.removeEventListener('ai-chat:select-conversation', handleSelectConversation as EventListener);
+      window.removeEventListener('ai-chat:new-conversation', handleNewConversation);
+    };
+  }, [USER_ID]);
 
   const handleSendMessage = (content: string) => {
     const newMessage: Message = {

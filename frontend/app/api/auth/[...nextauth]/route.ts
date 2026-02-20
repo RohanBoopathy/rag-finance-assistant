@@ -46,14 +46,18 @@ const authOptions = {
     async jwt({ token, user }: { token: any, user: any }) {
       if (user) {
         token.accessToken = (user as any).token;
+        token.userId = user.id ?? token.sub;
         token.name = user.name;
         token.email = user.email;
       }
       return token;
     },
     async session({ session, token }: { session: any, token: any }) {
+        const resolvedUserId = token.userId ?? token.sub
         session.accessToken = token.accessToken
         session.user = {
+          _id: resolvedUserId,
+          id: resolvedUserId,
           name: token.name,
           email: token.email,
         }
