@@ -1,9 +1,12 @@
 'use client';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { LayoutDashboard, Receipt, Shield, MessageSquare, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useSidebar } from '@/contexts/SidebarContext';
+import ChatHistory from './ChatHistory';
+import { Conversation } from '@/types/chat';
+import { useSession } from 'next-auth/react';
 
 interface NavItem {
   name: string;
@@ -11,8 +14,24 @@ interface NavItem {
   href: string;
 }
 
+const API_BASE_URL = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api`;
+
 const Sidebar = () => {
+  const {data: session} = useSession();
+  const USER_ID = (session?.user as { _id?: string; id?: string } | undefined)?._id
+    ?? (session?.user as { _id?: string; id?: string } | undefined)?.id;
+
+  useEffect(() => {
+    if (session?.user) {
+      console.log('User details:', session.user);
+      console.log('User ID:', USER_ID);
+    }
+  }, [session, USER_ID]);
+  
   const { isCollapsed, setIsCollapsed } = useSidebar();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [loadingConversations, setLoadingConversations] = useState(false);
   const pathname = usePathname();
 
   const navItems: NavItem[] = [
@@ -21,6 +40,61 @@ const Sidebar = () => {
     // { name: 'Fraud Detection', icon: <Shield size={20} />, href: '/fraud-detection' },
     { name: 'AI Assistant', icon: <MessageSquare size={20} />, href: '/ai-assistant' },
   ];
+
+  const loadConversations = async () => {
+    if (!USER_ID) return;
+
+    setLoadingConversations(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/conversations?userId=${USER_ID}`);
+      if (response.ok) {
+        const data = await response.json();
+        setConversations(data);
+      }
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+    } finally {
+      setLoadingConversations(false);
+    }
+  };
+
+  const deleteConversation = async (conversationId: string) => {
+    if (!USER_ID) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}?userId=${USER_ID}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: USER_ID })
+      });
+      
+      if (response.ok) {
+        setConversations((prev) => prev.filter((c) => c._id !== conversationId));
+        if (currentConversationId === conversationId) {
+          setCurrentConversationId(null);
+          window.dispatchEvent(new CustomEvent('ai-chat:new-conversation'));
+        }
+        window.dispatchEvent(new CustomEvent('ai-chat:refresh-conversations'));
+      }
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (pathname === '/ai-assistant') {
+      loadConversations();
+    }
+  }, [pathname, USER_ID]);
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      if (pathname === '/ai-assistant') {
+        loadConversations();
+      }
+    };
+    window.addEventListener('ai-chat:refresh-conversations', handleRefresh);
+    return () => window.removeEventListener('ai-chat:refresh-conversations', handleRefresh);
+  }, [pathname, USER_ID]);
 
   return (
     <div 
@@ -66,6 +140,25 @@ const Sidebar = () => {
               )}
             </Link>
           ))}
+
+          {!isCollapsed && pathname === '/ai-assistant' && (
+            <ChatHistory
+              conversations={conversations}
+              currentConversationId={currentConversationId}
+              onSelectConversation={(conversationId) => {
+                setCurrentConversationId(conversationId);
+                window.dispatchEvent(new CustomEvent('ai-chat:select-conversation', { detail: { conversationId } }));
+              }}
+              onNewChat={() => {
+                setCurrentConversationId(null);
+                window.dispatchEvent(new CustomEvent('ai-chat:new-conversation'));
+              }}
+              onDeleteConversation={(conversationId) => {
+                deleteConversation(conversationId);
+              }}
+              isLoading={loadingConversations}
+            />
+          )}
         </div>
 
         {/* Settings */}

@@ -2,6 +2,11 @@ import { RegisterOptions } from "module";
 import type { LucideIcon } from "lucide-react";
 
 declare global {
+    type NavItem = {
+      name: string;
+      icon: React.ReactNode;
+      href: string;
+    }
     type FormInputProps = {
         name: string;
         label: string;
