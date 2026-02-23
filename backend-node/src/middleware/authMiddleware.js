@@ -5,8 +5,13 @@ export const protect = (req, res, next) => {
 
   if (!token) return res.status(401).json({ message: "Not authorized" });
 
-  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  try{
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-  req.user = decoded;
-  next();
+    req.user = decoded;
+    next();
+  } catch (e) {
+    console.error("Auth error: ", e);
+    res.status(401).json({ message: "Invalid token" });
+  }
 };

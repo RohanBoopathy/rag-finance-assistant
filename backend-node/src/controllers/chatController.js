@@ -1,8 +1,10 @@
 import mongoose from "mongoose";
 import Conversation from "../models/Conversations.js";
 import Transaction from "../models/Transactions.js";
-import { buildFinancialSummary } from "../utils/financialSummary.js";
+import { embedText } from "../utils/embedService.js";
 import { generateAIResponse } from "../utils/aiService.js";
+import { retrieveRelevantTransactions } from "../utils/retrieveContext.js";
+import { buildFinancialSummary } from "../utils/financialSummary.js";
 
 export const chatWithAI = async (req, res) => {
   const userId = req.user?.id || req.body.userId; // fallback for prototype
@@ -34,12 +36,16 @@ export const chatWithAI = async (req, res) => {
       timestamp: new Date()
     })
 
-    const transactions = await Transaction.find({
-      userId: new mongoose.Types.ObjectId(userId),
-    })
+    // ---------- RAG PIPELINE -----------------------
 
-    const summary = buildFinancialSummary(transactions);
-    const aiResponse = await generateAIResponse(summary, message)
+    const queryEmmbedding = await embedText(message);
+
+    const relevantTransactions = await retrieveRelevantTransactions( userId, queryEmmbedding );
+
+    const allTransactions = await Transaction.find({ userId });
+    const summary = buildFinancialSummary(allTransactions);
+
+    const aiResponse = await generateAIResponse(relevantTransactions, message, summary);
 
     conversation.messages.push({
       role: 'assistant',
