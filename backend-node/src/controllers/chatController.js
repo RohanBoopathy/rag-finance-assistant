@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import Conversation from "../models/Conversations.js";
+import Conversation from "../models/Conversation.js";
 import Transaction from "../models/Transactions.js";
 import { embedText } from "../utils/embedService.js";
 import { generateAIResponse } from "../utils/aiService.js";
@@ -7,60 +7,94 @@ import { retrieveRelevantTransactions } from "../utils/retrieveContext.js";
 import { buildFinancialSummary } from "../utils/financialSummary.js";
 
 export const chatWithAI = async (req, res) => {
-  const userId = req.user?.id || req.body.userId; // fallback for prototype
+  const userId = req.user?.id || req.body.userId;
   const { message, conversationId } = req.body;
+
+  if (!userId || !message) {
+    return res.status(400).json({ error: "User ID and message are required" });
+  }
+
+  // Convert userId safely
+  let userObjectId;
+  try {
+    userObjectId = new mongoose.Types.ObjectId(userId);
+  } catch (err) {
+    return res.status(400).json({ error: "Invalid User ID format" });
+  }
+
+  // ───────── SSE HEADERS ─────────
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
 
   try {
     let conversation;
-    if (conversationId) {
+
+    // ───────── LOAD OR CREATE CONVERSATION ─────────
+    if (conversationId && mongoose.Types.ObjectId.isValid(conversationId)) {
       conversation = await Conversation.findOne({
         _id: conversationId,
-        userId: new mongoose.Types.ObjectId(userId)
-      })
+        userId: userObjectId,
+      });
 
       if (!conversation) {
-        return res.status(404).json({ error: "Conversation not found or inaccessible" });
+        res.write(`data: ${JSON.stringify({ error: "Conversation not found" })}\n\n`);
+        return res.end();
       }
     } else {
-        conversation = new Conversation({
-          userId: new mongoose.Types.ObjectId(userId),
-          title: message.substring(0, 20) + "...",
-          messages: [],
-        })
+      conversation = new Conversation({
+        userId: userObjectId,
+        title: message.substring(0, 25),
+        messages: [],
+      });
     }
 
-    // Add user message to conversation
+    // Save user message
     conversation.messages.push({
-      role: 'user',
+      role: "user",
       content: message,
-      timestamp: new Date()
-    })
+      timestamp: new Date(),
+    });
 
-    // ---------- RAG PIPELINE -----------------------
+    // ───────── RAG PIPELINE ─────────
+    const queryEmbedding = await embedText(message);
 
-    const queryEmmbedding = await embedText(message);
+    const relevantTransactions = await retrieveRelevantTransactions(
+      userObjectId,
+      queryEmbedding
+    );
 
-    const relevantTransactions = await retrieveRelevantTransactions( userId, queryEmmbedding );
+    const allTransactions = await Transaction.find({ userId: userObjectId })
+      .sort({ timestamp: -1 })
+      .limit(200);
 
-    const allTransactions = await Transaction.find({ userId });
     const summary = buildFinancialSummary(allTransactions);
 
-    const aiResponse = await generateAIResponse(relevantTransactions, message, summary);
+    // Send conversationId early to frontend
+    res.write(
+      `data: ${JSON.stringify({ conversationId: conversation._id })}\n\n`
+    );
 
+    // ───────── STREAM AI RESPONSE ─────────
+    const aiResponse = await generateAIResponse(summary, message);
+
+    // Save assistant message after streaming completes
     conversation.messages.push({
-      role: 'assistant',
+      role: "assistant",
       content: aiResponse,
-      timestamp: new Date()
-    })
+      timestamp: new Date(),
+    });
 
     await conversation.save();
 
-    res.json({ 
-      reply: aiResponse,
-      conversationId: conversation._id  
-    });
-  }  catch (e) {
-    console.error("Error in chatWithAi: ", e);
-    res.status(500).json({ error: "Failed to process chat message" });
+    res.write(`data: ${JSON.stringify({ saved: true })}\n\n`);
+  } catch (error) {
+    console.error("Error in chatWithAI:", error);
+    res.write(
+      `data: ${JSON.stringify({ error: "Failed to process chat message" })}\n\n`
+    );
+  } finally {
+    res.end();
   }
 };
