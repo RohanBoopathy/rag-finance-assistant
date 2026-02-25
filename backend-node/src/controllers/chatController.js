@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import Conversation from "../models/Conversation.js";
+import Conversation from "../models/Conversations.js";
 import Transaction from "../models/Transactions.js";
 import { embedText } from "../utils/embedService.js";
 import { generateAIResponse } from "../utils/aiService.js";
@@ -77,7 +77,7 @@ export const chatWithAI = async (req, res) => {
     );
 
     // ───────── STREAM AI RESPONSE ─────────
-    const aiResponse = await generateAIResponse(summary, message);
+    const aiResponse = await generateAIResponse(relevantTransactions, message, summary, res);
 
     // Save assistant message after streaming completes
     conversation.messages.push({
@@ -91,10 +91,14 @@ export const chatWithAI = async (req, res) => {
     res.write(`data: ${JSON.stringify({ saved: true })}\n\n`);
   } catch (error) {
     console.error("Error in chatWithAI:", error);
-    res.write(
-      `data: ${JSON.stringify({ error: "Failed to process chat message" })}\n\n`
-    );
+    if (!res.writableEnded) {
+      res.write(
+        `data: ${JSON.stringify({ error: "Failed to process chat message" })}\n\n`
+      );
+    }
   } finally {
-    res.end();
+    if (!res.writableEnded) {
+      res.end();
+    }
   }
 };
