@@ -46,6 +46,17 @@ const Chatbot = () => {
   const handleSend = async (userMessage: Message) => {
     if (!USER_ID || !ACCESS_TOKEN) return;
     setLoading(true)
+
+    const aiMessageId = (Date.now() + 1).toString();
+    setMessages(prev => [
+      ...prev,
+      {
+        id: aiMessageId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date()
+      },
+    ])
     
     try {
       const response = await fetch(`${API_BASE_URL}/chat`, {
@@ -61,33 +72,55 @@ const Chatbot = () => {
         })
       })
 
-      if (!response.ok) {
-        throw new Error('Failed to get AI response')
+      if (!response.body) throw new Error("No response body");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value, {stream: true})
+        const lines = text.split('\n').filter((l) => l.startsWith('data: '));
+
+        for (const line of lines) {
+          const json = line.replace('data: ', "").trim();
+
+          try {
+            const parsed = JSON.parse(json);
+            
+            if (parsed.conversationId) {
+              setCurrentConversationId(parsed.conversationId);
+            }
+            if (parsed.token) {
+              setMessages(prev => prev.map(msg => msg.id === aiMessageId ? 
+                {...msg, content: msg.content + parsed.token} : msg
+              ))
+            }
+
+            if (parsed.saved) {
+              window.dispatchEvent(new CustomEvent("ai-chat: refresh-conversations"))
+            }
+
+            if (parsed.error) {
+              setMessages(prev => prev.map(msg => 
+                msg.id === aiMessageId ? 
+                    {...msg, content: `[Error]: ${parsed.error}`} : msg
+              ))
+            }
+          } catch (e) {
+            console.error('Error parsing message chunk:', e)
+          }
+        }
       }
 
-      const data = await response.json()
-      if (data.conversationId) {
-        setCurrentConversationId(data.conversationId);
-      }
-      
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.reply,
-        timestamp: new Date()
-      }
-      
-      setMessages(prev => [...prev, aiMessage])
-      window.dispatchEvent(new CustomEvent('ai-chat:refresh-conversations'));
-    } catch (error) {
-      console.error('Error sending message:', error)
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, errorMessage])
+    } catch (e) {
+      console.error('Error sending message:', e)
+      setMessages(prev => prev.map(msg => 
+        msg.id === aiMessageId ? 
+            {...msg, content: "[Error generating response]"} : msg
+      ))
     } finally {
       setLoading(false)
     }

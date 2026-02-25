@@ -8,35 +8,93 @@ export const generateAIResponse = async (relevantTransactions, question, summary
               `${i + 1}. ${tx.type === "credit" ? "Credit" : "Debit"} of $${Number(tx.amount).toFixed(2)} at ${tx.merchant} (${tx.category}) on ${tx.timestamp?.split("T")[0] ?? "N/A"}. Suspicious: ${tx.isSuspicious}`
           )
           .join("\n") : 'No relevant transactions found.';
+        // ─── 1. Format helpers ────────────────────────────────────────────────
 
-  const prompt = `
-You are a financial assistant.
-Answer based only on the provided data.
+const formatCurrency = (amount) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(amount);
 
+const formatCategorySpending = (categoryMap) =>
+  Object.entries(categoryMap)
+    .map(([cat, amt]) => `  • ${cat}: ${formatCurrency(amt)}`)
+    .join("\n");
+
+const formatMerchants = (merchants) =>
+  merchants.length > 0 ? merchants.join(", ") : "No merchants found";
+
+// ─── 2. Detect intent before building prompt ──────────────────────────
+
+const isGreeting = (q) =>
+  /^(hi|hello|hey|how are you|good morning|good evening|what's up)/i.test(q.trim());
+
+// ─── 3. Build financial context block ────────────────────────────────
+
+const buildFinancialContext = (summary, transactionContext) => `
+=== FINANCIAL PROFILE FOR ${summary.name.toUpperCase()} ===
+
+Overview:
+  • Total Credits : ${formatCurrency(summary.totalCredit)}
+  • Total Debits  : ${formatCurrency(summary.totalDebit)}
+  • Net Balance   : ${formatCurrency(summary.balance)}
+  • Suspicious Txns: ${summary.suspiciousCount}
+
+Spending by Category:
+${formatCategorySpending(summary.categoryMap)}
+
+Merchants Transacted With:
+  ${formatMerchants(summary.merchants)}
+
+Recent Relevant Transactions:
 ${transactionContext}
+`.trim();
 
-Financial Summary:
-Total Credit: ${summary.totalCredit}
-Total Debit: ${summary.totalDebit}
-Balance: ${summary.balance}
-Category Spending: ${JSON.stringify(summary.categoryMap)}
-Suspicious Transactions: ${summary.suspiciousCount}
-Merchants: ${summary.merchants.length > 0 ? summary.merchants.join(", ") : "None"}
-name: ${summary.name}
+// ─── 4. Final prompt builder ──────────────────────────────────────────
 
-User Question:
-${question}
+const buildPrompt = (question, summary, transactionContext) => {
+  const greeting = isGreeting(question);
 
-Instructions: 
- - Be concise and specific
- - Refer actual transactions from above data
- - If the data doesn't support the answer, say so honestly. 
-`;
+  const systemRole = `
+You are FinBot, a smart and friendly personal finance assistant.
+You are currently assisting ${summary.name}.
+Today's date is ${new Date().toDateString()}.
+`.trim();
+
+  const financialContext = greeting
+    ? "" // Don't inject financial data for greetings
+    : buildFinancialContext(summary, transactionContext);
+
+  const instructions = greeting
+    ? `
+The user is greeting you. Respond in a warm, friendly manner.
+Briefly introduce yourself as FinBot and mention you can help with their finances.
+Do NOT reference any financial data.
+`.trim()
+    : `
+Instructions:
+- Answer ONLY based on the financial data provided above.
+- Be concise, specific, and data-driven.
+- Always use formatted currency values (not raw numbers).
+- If the data doesn't have enough information to answer, say so honestly.
+- Do NOT make up transactions, amounts, or trends not present in the data.
+- Keep your response under 150 words unless a detailed breakdown is explicitly asked.
+- If the user asks for advice, base it strictly on their actual spending patterns.
+`.trim();
+
+  return `
+${systemRole}
+
+${financialContext ? financialContext + "\n" : ""}
+${instructions}
+
+User: ${question}
+FinBot:`.trim();
+};
+
+  const prompt = buildPrompt(question, summary, transactionContext);
 
   const response = await axios.post(`${process.env.OLLAMA_URL}/api/generate`, {
     model: "mistral",
     prompt,
-    stream: false
+    stream: true,
   }, {
     responseType: "stream",
   });
@@ -44,7 +102,7 @@ Instructions:
   let fullResponse = "";
   let buffer = "";
   return new Promise((resolve, reject) => {
-    ollamaRes.data.on("data", (chunk) => {
+    response.data.on("data", (chunk) => {
       const lines = chunk.toString().split("\n").filter(Boolean);
 
       for (const line of lines) {
@@ -63,19 +121,15 @@ Instructions:
           }
         } catch {
           // Incomplete JSON chunk — store and wait for next data event
-          buffer = toParse;
+          buffer = line;
           // don't reject; wait for next chunk to complete the JSON
           continue;
         }
       }
     });
 
-    ollamaRes.data.on("end", () => resolve(fullResponse));
-    ollamaRes.data.on("error", (err) => {
-      // Inform client and reject promise
-      try {
-        res.write(`data: ${JSON.stringify({ error: "AI stream error" })}\n\n`);
-      } catch (e) { /* ignore write errors */ }
+    response.data.on("end", () => resolve(fullResponse));
+    response.data.on("error", (err) => {
       reject(err);
     });
   });
