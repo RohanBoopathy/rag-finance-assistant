@@ -1,15 +1,11 @@
 # 💰 RAG Finance Assistant
 
-A full-stack personal finance web application powered by a **Retrieval-Augmented Generation (RAG)** AI chatbot built with modern web technologies.
-The platform enables users to manage and analyze their personal financial data through an intuitive dashboard, detailed transaction views, and an intelligent AI assistant.
-Users can sign up, securely authenticate via **JWT-based authentication**, and interact with their financial records in real time.
-Every transaction stored in **MongoDB Atlas** is embedded into a **768-dimensional vector** using the **nomic-embed-text** model running locally on **Ollama**.
-These vectors are indexed and stored in a **Qdrant vector database**, enabling high-performance semantic similarity search across all user transactions.
-When a user asks the AI assistant a question, the system detects intent — distinguishing between temporal queries (e.g., "last 5 transactions") and semantic queries (e.g., "spending at Amazon").
-For semantic queries, the user's question is embedded and matched against stored vectors using cosine similarity, retrieving the most relevant transactions as context.
-A comprehensive financial summary (total credits, debits, balance, category breakdowns) is dynamically generated and combined with retrieved context to build a rich prompt for the LLM.
-The prompt is sent to a locally hosted **qwen2.5:7b** language model via Ollama, which streams the response token-by-token back to the frontend using **Server-Sent Events (SSE)**.
-The frontend, built with **Next.js**, **React**, **TypeScript**, and **Tailwind CSS**, renders the AI responses in real time, delivering a seamless and responsive conversational experience.
+- A full-stack personal finance web application powered by a **Retrieval-Augmented Generation (RAG)** AI chatbot built with modern web technologies. The platform enables users to manage and analyze their personal financial data through an intuitive dashboard, detailed transaction views, and an intelligent AI assistant.
+- Users can sign up, securely authenticate via **JWT-based authentication**, and interact with their financial records in real time. Every transaction stored in **MongoDB Atlas** is embedded into a **768-dimensional vector** using the **nomic-embed-text** model running locally on **Ollama**. These vectors are indexed and stored in a **Qdrant vector database**, enabling high-performance semantic similarity search across all user transactions.
+- When a user asks the AI assistant a question, the system detects intent — distinguishing between temporal queries (e.g., "last 5 transactions") and semantic queries (e.g., "spending at Amazon"). For semantic queries, the user's question is embedded and matched against stored vectors using cosine similarity, retrieving the most relevant transactions as context.
+- A comprehensive financial summary (total credits, debits, balance, category breakdowns) is dynamically generated and combined with retrieved context to build a rich prompt for the LLM.
+- The prompt is sent to a locally hosted **qwen2.5:7b** language model via Ollama, which streams the response token-by-token back to the frontend using **Server-Sent Events (SSE)**.
+- The frontend, built with **Next.js**, **React**, **TypeScript**, and **Tailwind CSS**, renders the AI responses in real time, delivering a seamless and responsive conversational experience.
 
 ---
 
