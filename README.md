@@ -1,8 +1,15 @@
 # 💰 RAG Finance Assistant
 
-A full-stack personal finance web application powered by a **Retrieval-Augmented Generation (RAG)** AI chatbot. Users can view their financial dashboard, browse transactions, and chat with an AI assistant that answers questions based on their **actual transaction data**.
-
-Transactions are embedded and stored in a **Qdrant vector database**, semantically retrieved per query, and injected as context into prompts sent to a local LLM via **Ollama**.
+A full-stack personal finance web application powered by a **Retrieval-Augmented Generation (RAG)** AI chatbot built with modern web technologies.
+The platform enables users to manage and analyze their personal financial data through an intuitive dashboard, detailed transaction views, and an intelligent AI assistant.
+Users can sign up, securely authenticate via **JWT-based authentication**, and interact with their financial records in real time.
+Every transaction stored in **MongoDB Atlas** is embedded into a **768-dimensional vector** using the **nomic-embed-text** model running locally on **Ollama**.
+These vectors are indexed and stored in a **Qdrant vector database**, enabling high-performance semantic similarity search across all user transactions.
+When a user asks the AI assistant a question, the system detects intent — distinguishing between temporal queries (e.g., "last 5 transactions") and semantic queries (e.g., "spending at Amazon").
+For semantic queries, the user's question is embedded and matched against stored vectors using cosine similarity, retrieving the most relevant transactions as context.
+A comprehensive financial summary (total credits, debits, balance, category breakdowns) is dynamically generated and combined with retrieved context to build a rich prompt for the LLM.
+The prompt is sent to a locally hosted **qwen2.5:7b** language model via Ollama, which streams the response token-by-token back to the frontend using **Server-Sent Events (SSE)**.
+The frontend, built with **Next.js**, **React**, **TypeScript**, and **Tailwind CSS**, renders the AI responses in real time, delivering a seamless and responsive conversational experience.
 
 ---
 
@@ -224,16 +231,18 @@ node --version    # verify: v18.x or higher
 npm --version     # verify: 9.x or higher
 ```
 
-### 2. MongoDB
+### 2. MongoDB Atlas (Cloud Database)
 ```bash
-# Option A: Install locally
-# Download from https://www.mongodb.com/try/download/community
+# 1. Create a free account at https://www.mongodb.com/cloud/atlas
+# 2. Create a new cluster (free M0 tier is sufficient)
+# 3. Under "Database Access", create a database user with read/write permissions
+# 4. Under "Network Access", add your IP address (or allow access from anywhere: 0.0.0.0/0)
+# 5. Click "Connect" → "Drivers" → copy the connection string
 
-# Option B: Use Docker
-docker run -d --name mongodb -p 27017:27017 mongo:latest
+# Your connection string will look like:
+# mongodb+srv://<username>:<password>@<cluster>.mongodb.net/<dbname>?retryWrites=true&w=majority
 
-# Verify
-mongosh --eval "db.runCommand({ ping: 1 })"
+# Paste it into backend-node/.env as MONGODB_URL
 ```
 
 ### 3. Qdrant (Vector Database)
@@ -268,7 +277,7 @@ ollama list
 PORT=5000
 
 # MongoDB connection string
-MONGODB_URL="Your_MONGODB_ATLAS_URI"
+MONGODB_URL="Your_MONGODB_ATLAS_URL"
 
 # JWT secret key (use a strong random string)
 JWT_SECRET=your_jwt_secret_key_here
@@ -320,7 +329,7 @@ npm install
 
 # Create .env file (see template above)
 # Then start the server
-node server.js    ||  npm run dev (install Nodemon)
+node server.js  ||  npm run dev (install Nodemon)
 ```
 
 You should see:
@@ -460,6 +469,34 @@ User: "how much did I spend at Amazon?"
   │
   └── Ollama streams response via SSE → Frontend renders live
 ```
+
+---
+
+## 🔒 Security and Limitations
+
+### Security
+- **JWT Authentication** — All protected routes require a valid JWT token. Tokens are signed with a secret key and verified on each request.
+- **Password Hashing** — User passwords are hashed with bcrypt before being stored in MongoDB Atlas.
+- **Environment Variables** — Sensitive credentials (database URI, JWT secret, NextAuth secret) are stored in `.env` files and should **never** be committed to version control.
+- **CORS** — Cross-origin requests are restricted via the `cors` middleware configuration.
+
+### Limitations
+- **Local LLM Only** — The AI assistant relies on Ollama running locally; there is no cloud LLM fallback. Response quality and speed depend on your hardware.
+- **Single-User Focused** — While multi-user auth is supported, there is no role-based access control or admin panel.
+
+---
+
+## 🤝 Contributions
+
+Contributions are welcome! To contribute:
+
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/your-feature`)
+3. **Commit** your changes (`git commit -m "Add your feature"`)
+4. **Push** to your branch (`git push origin feature/your-feature`)
+5. **Open** a Pull Request
+
+Please ensure your code follows the existing project structure and conventions. For major changes, open an issue first to discuss the proposed changes.
 
 ---
 
