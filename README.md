@@ -72,127 +72,82 @@ Transactions are embedded and stored in a **Qdrant vector database**, semantical
 
 
 
----
-
+```mermaid
 graph TB
-    subgraph "🌐 Client Layer"
-        Browser["🖥️ Web Browser<br/>User Interface"]
+    subgraph Client["🌐 Client Layer"]
+        Browser["🖥️ Web Browser"]
     end
 
-    subgraph "Frontend (Next.js 16 + React 19 + TypeScript)"
-        Dashboard["📊 Dashboard<br/>KPI Cards & Charts"]
-        Transactions["💳 Transactions<br/>Transaction Table"]
-        Assistant["🤖 AI Assistant<br/>RAG Chatbot"]
-        FraudDetection["🚨 Fraud Detection<br/>Fraud Analysis"]
-        Settings["⚙️ Settings<br/>App Configuration"]
-        Auth["🔐 Authentication<br/>NextAuth (JWT)"]
-        UI["🎨 UI Components<br/>Tailwind + shadcn/ui"]
+    subgraph Frontend["Frontend - Next.js 16 + React 19"]
+        Dashboard["📊 Dashboard"]
+        Transactions["💳 Transactions"]
+        Assistant["🤖 AI Assistant"]
+        Auth["🔐 Auth"]
     end
 
-    subgraph "Backend (Node.js + Express 5 + TypeScript)"
-        APIGateway["🚪 API Gateway<br/>Route Handler"]
+    subgraph Backend["Backend - Node.js + Express 5"]
+        APIGateway["API Gateway"]
         
-        subgraph "Controllers"
-            AuthCtrl["👤 Auth Controller<br/>Register/Login"]
-            ChatCtrl["💬 Chat Controller<br/>RAG Pipeline"]
-            ConvCtrl["📝 Conversation Controller<br/>CRUD Ops"]
-            TxnCtrl["📊 Transaction Controller<br/>Fetch Txns"]
+        subgraph Controllers["Controllers"]
+            AuthCtrl["Auth Controller"]
+            ChatCtrl["Chat Controller"]
+            ConvCtrl["Conversation Controller"]
+            TxnCtrl["Transaction Controller"]
         end
 
-        subgraph "RAG Pipeline"
-            IntentDetect["🎯 Intent Detection<br/>Temporal vs Semantic"]
-            Embedding["📐 Embedding Service<br/>nomic-embed-text<br/>768-dim vectors"]
-            VectorSearch["🔍 Vector Search<br/>Qdrant Cosine<br/>Top-8 Results"]
-            Summary["📈 Financial Summary<br/>Aggregate Data"]
-            Prompt["✍️ Prompt Assembly<br/>Context Injection"]
-            LLMStream["🎙️ LLM Streaming<br/>Ollama qwen2.5:7b<br/>SSE Response"]
+        subgraph RAGPipeline["RAG Pipeline"]
+            IntentDetect["Intent Detection"]
+            Embedding["Embedding Service<br/>nomic-embed-text"]
+            VectorSearch["Vector Search<br/>Qdrant"]
+            Summary["Financial Summary"]
+            Prompt["Prompt Assembly"]
+            LLMStream["LLM Streaming<br/>Ollama"]
         end
 
-        subgraph "Services & Utils"
-            AIService["🧠 AI Service<br/>Prompt Builder"]
-            EmbedSvc["🔤 Embed Service<br/>Text→Vector"]
-            FinSummary["💰 Financial Summary<br/>Aggregation"]
-            IngestTxn["📥 Ingest Service<br/>Embed & Upsert"]
-            RetrieveCtx["📚 Retrieve Context<br/>Semantic Query"]
-        end
-
-        Middleware["🔒 JWT Middleware<br/>Auth Verification"]
+        Middleware["JWT Middleware"]
     end
 
-    subgraph "Database & Storage Layer"
-        MongoDB[("🗄️ MongoDB<br/>Users<br/>Transactions<br/>Conversations")]
-        Qdrant[("🔷 Qdrant<br/>Vector Store<br/>768-dim vectors<br/>Cosine Search")]
-        Ollama[("🧠 Ollama LLM<br/>qwen2.5:7b<br/>nomic-embed-text")]
+    subgraph Databases["Data & Storage Layer"]
+        MongoDB[("MongoDB<br/>Users, Txns, Convos")]
+        Qdrant[("Qdrant<br/>768-dim Vectors")]
+        Ollama[("Ollama<br/>qwen2.5:7b")]
     end
 
-    %% Client to Frontend
-    Browser -->|HTTP/SSE| Dashboard
-    Browser -->|HTTP/SSE| Transactions
-    Browser -->|HTTP/SSE| Assistant
-    Browser -->|HTTP/SSE| FraudDetection
-    Browser -->|HTTP/SSE| Settings
-    Browser -->|HTTP/SSE| Auth
+    Browser -->|HTTP/SSE| Frontend
+    Dashboard --> APIGateway
+    Transactions --> APIGateway
+    Assistant --> APIGateway
+    Auth --> APIGateway
 
-    %% Frontend to Backend
-    Dashboard -->|API Requests| APIGateway
-    Transactions -->|API Requests| APIGateway
-    Assistant -->|API Requests| APIGateway
-    FraudDetection -->|API Requests| APIGateway
-    Settings -->|API Requests| APIGateway
-    Auth -->|API Requests| APIGateway
+    APIGateway --> Middleware
+    APIGateway --> AuthCtrl
+    APIGateway --> ChatCtrl
+    APIGateway --> ConvCtrl
+    APIGateway --> TxnCtrl
 
-    %% API Gateway to Controllers
-    APIGateway -->|Route| AuthCtrl
-    APIGateway -->|Route| ChatCtrl
-    APIGateway -->|Route| ConvCtrl
-    APIGateway -->|Route| TxnCtrl
+    ChatCtrl --> IntentDetect
+    IntentDetect --> Embedding
+    Embedding --> VectorSearch
+    VectorSearch --> Summary
+    Summary --> Prompt
+    Prompt --> LLMStream
 
-    %% Middleware
-    APIGateway -->|Verify| Middleware
+    AuthCtrl --> MongoDB
+    ChatCtrl --> MongoDB
+    ConvCtrl --> MongoDB
+    TxnCtrl --> MongoDB
 
-    %% RAG Pipeline Flow
-    ChatCtrl -->|Process| IntentDetect
-    IntentDetect -->|Temporal| MongoDB
-    IntentDetect -->|Semantic| Embedding
-    Embedding -->|Vector| VectorSearch
-    VectorSearch -->|Query| Qdrant
-    Qdrant -->|Results| Summary
-    Summary -->|Context| Prompt
-    Prompt -->|Generate| LLMStream
-    LLMStream -->|Response| ChatCtrl
+    Embedding --> Ollama
+    LLMStream --> Ollama
+    VectorSearch --> Qdrant
+    Prompt --> Qdrant
 
-    %% Service Dependencies
-    ChatCtrl -->|Use| AIService
-    Embedding -->|Use| EmbedSvc
-    Summary -->|Use| FinSummary
-    VectorSearch -->|Use| RetrieveCtx
-    ConvCtrl -->|Use| IngestTxn
-
-    %% Backend to Databases
-    AuthCtrl -->|Query/Insert| MongoDB
-    ConvCtrl -->|Query/Insert| MongoDB
-    TxnCtrl -->|Query| MongoDB
-    Prompt -->|Embed| Ollama
-    LLMStream -->|Generate| Ollama
-    EmbedSvc -->|Embed| Ollama
-    IngestTxn -->|Upsert| Qdrant
-    RetrieveCtx -->|Search| Qdrant
-
-    %% Styling
-    classDef client fill:#3498db,stroke:#2980b9,color:#fff,stroke-width:2px
-    classDef frontend fill:#e74c3c,stroke:#c0392b,color:#fff,stroke-width:2px
-    classDef backend fill:#2ecc71,stroke:#27ae60,color:#fff,stroke-width:2px
-    classDef rag fill:#f39c12,stroke:#d68910,color:#fff,stroke-width:2px
-    classDef db fill:#9b59b6,stroke:#8e44ad,color:#fff,stroke-width:2px
-
-    class Browser client
-    class Dashboard,Transactions,Assistant,FraudDetection,Settings,Auth,UI frontend
-    class APIGateway,AuthCtrl,ChatCtrl,ConvCtrl,TxnCtrl,Middleware backend
-    class IntentDetect,Embedding,VectorSearch,Summary,Prompt,LLMStream,AIService,EmbedSvc,FinSummary,IngestTxn,RetrieveCtx rag
-    class MongoDB,Qdrant,Ollama db
-
-
-
+    style Client fill:#3498db,stroke:#2980b9,color:#fff
+    style Frontend fill:#e74c3c,stroke:#c0392b,color:#fff
+    style Backend fill:#2ecc71,stroke:#27ae60,color:#fff
+    style RAGPipeline fill:#f39c12,stroke:#d68910,color:#fff
+    style Databases fill:#9b59b6,stroke:#8e44ad,color:#fff
+```
 ---
 
 ## 📁 Folder Structure
