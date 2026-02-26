@@ -74,143 +74,89 @@ Transactions are embedded and stored in a **Qdrant vector database**, semantical
 
 ```mermaid
 graph TB
-    subgraph Client["👤 CLIENT LAYER"]
-        Browser["🖥️ Web Browser<br/>User Interface"]
+    subgraph Client["CLIENT LAYER"]
+        Browser["Web Browser"]
     end
 
-    subgraph Frontend["🎨 FRONTEND LAYER<br/>Next.js 16 + React 19 + TypeScript"]
-        Auth["🔐 Authentication<br/>NextAuth JWT"]
-        Dashboard["📊 Dashboard<br/>KPI Cards & Charts"]
-        Transactions["💳 Transactions<br/>Transaction Table"]
-        Assistant["🤖 AI Assistant<br/>RAG Chatbot<br/>SSE Streaming"]
-        FraudDetection["🚨 Fraud Detection<br/>Analysis Tool"]
-        UIComponents["🎨 UI Layer<br/>Tailwind + shadcn/ui<br/>Lucide Icons"]
+    subgraph Frontend["FRONTEND<br/>Next.js 16 + React 19"]
+        Auth["Authentication"]
+        Dashboard["Dashboard"]
+        Transactions["Transactions"]
+        Assistant["AI Assistant"]
     end
 
-    subgraph Backend["⚙️ BACKEND LAYER<br/>Node.js + Express 5 + TypeScript"]
-        APIGateway["🚪 API Router<br/>Route Handler"]
+    subgraph Backend["BACKEND<br/>Node.js + Express 5"]
+        APIGateway["API Gateway"]
         
-        subgraph Controllers["🎯 CONTROLLERS"]
-            AuthCtrl["👤 Auth Controller<br/>Register/Login/JWT"]
-            ChatCtrl["���� Chat Controller<br/>RAG Handler"]
-            ConvCtrl["📝 Conv Controller<br/>CRUD Operations"]
-            TxnCtrl["📊 Txn Controller<br/>Data Retrieval"]
+        subgraph Controllers["Controllers"]
+            AuthCtrl["Auth Controller"]
+            ChatCtrl["Chat Controller"]
+            ConvCtrl["Conv Controller"]
+            TxnCtrl["Txn Controller"]
         end
 
-        subgraph RAGPipeline["🧠 RAG PIPELINE"]
-            IntentDetect["🎯 Intent Detection<br/>Temporal vs Semantic"]
-            Embedding["📐 Embedding Service<br/>nomic-embed-text<br/>768-dimensional"]
-            VectorSearch["🔍 Vector Search<br/>Cosine Similarity<br/>Top-8 Results"]
-            Summary["📈 Financial Summary<br/>Credit/Debit Agg<br/>Category Map"]
-            PromptBuilder["✍️ Prompt Builder<br/>Context Injection<br/>System Role"]
-            LLMStream["🎙️ LLM Streaming<br/>Token-by-Token SSE<br/>Response Stream"]
+        subgraph RAG["RAG Pipeline"]
+            IntentDetect["Intent Detection"]
+            Embedding["Embedding Service"]
+            VectorSearch["Vector Search"]
+            Summary["Financial Summary"]
+            Prompt["Prompt Builder"]
+            LLMStream["LLM Streaming"]
         end
 
-        subgraph Utils["🛠️ UTILITIES"]
-            AIService["🧠 AI Service<br/>Prompt Generation"]
-            EmbedSvc["🔤 Embed Service<br/>Text to Vector"]
-            FinSummary["💰 Financial Agg<br/>Transaction Summary"]
-            IngestTxn["📥 Ingest Service<br/>Embed & Upsert"]
-            RetrieveCtx["📚 Context Retrieval<br/>Semantic Query"]
-        end
-
-        Middleware["🔒 JWT Middleware<br/>Token Verification<br/>Auth Guard"]
+        Middleware["JWT Middleware"]
     end
 
-    subgraph Databases["💾 DATA & STORAGE LAYER"]
-        MongoDB[("📄 MongoDB<br/>────────────<br/>👤 Users<br/>💳 Transactions<br/>📝 Conversations<br/>────────────<br/>Mongoose ODM")]
-        Qdrant[("🔷 Qdrant VectorDB<br/>────────────<br/>📐 768-dim Vectors<br/>🔍 Cosine Search<br/>⚡ Fast Retrieval<br/>────────────<br/>Collection Storage")]
-        Ollama[("🧠 Ollama LLM<br/>────────────<br/>🤖 qwen2.5:7b<br/>📝 nomic-embed-text<br/>⚡ Local Inference<br/>────────────<br/>Port 11434")]
+    subgraph Databases["DATA LAYER"]
+        MongoDB[("MongoDB<br/>Users<br/>Transactions<br/>Conversations")]
+        Qdrant[("Qdrant<br/>Vector Store<br/>768-dim")]
+        Ollama[("Ollama<br/>qwen2.5:7b<br/>nomic-embed")]
     end
 
-    subgraph ExternalServices["☁️ INFRASTRUCTURE"]
-        Port3000["🌐 Frontend Port 3000<br/>Next.js Dev Server"]
-        Port5000["⚙️ Backend Port 5000<br/>Express Server"]
-        Port6333["🔷 Qdrant Port 6333<br/>Vector DB API"]
-        Port11434["🧠 Ollama Port 11434<br/>LLM API"]
-    end
+    Browser -->|HTTP/SSE| Frontend
+    
+    Auth --> APIGateway
+    Dashboard --> APIGateway
+    Transactions --> APIGateway
+    Assistant --> APIGateway
 
-    %% Client to Frontend
-    Browser -->|HTTP Requests<br/>WebSocket/SSE| Port3000
-    Port3000 --> Auth
-    Port3000 --> Dashboard
-    Port3000 --> Transactions
-    Port3000 --> Assistant
-    Port3000 --> FraudDetection
-
-    %% Frontend to Backend
-    Auth -->|POST /api/auth/*| Port5000
-    Dashboard -->|GET /api/transactions| Port5000
-    Transactions -->|GET /api/transactions| Port5000
-    Assistant -->|POST /api/chat<br/>SSE Stream| Port5000
-    FraudDetection -->|API Calls| Port5000
-
-    %% Backend Gateway
-    Port5000 --> APIGateway
     APIGateway --> Middleware
+    APIGateway --> AuthCtrl
+    APIGateway --> ChatCtrl
+    APIGateway --> ConvCtrl
+    APIGateway --> TxnCtrl
 
-    %% Routes to Controllers
-    APIGateway -->|/api/auth/*| AuthCtrl
-    APIGateway -->|/api/chat| ChatCtrl
-    APIGateway -->|/api/conversations/*| ConvCtrl
-    APIGateway -->|/api/transactions| TxnCtrl
-
-    %% RAG Pipeline Flow
     ChatCtrl --> IntentDetect
-    IntentDetect -->|Temporal Query| MongoDB
-    IntentDetect -->|Semantic Query| Embedding
+    IntentDetect --> Embedding
     Embedding --> VectorSearch
-    VectorSearch --> RetrieveCtx
-    RetrieveCtx --> Summary
-    Summary --> PromptBuilder
-    PromptBuilder --> LLMStream
-    LLMStream -->|SSE Stream| ChatCtrl
+    VectorSearch --> Summary
+    Summary --> Prompt
+    Prompt --> LLMStream
+    LLMStream --> ChatCtrl
 
-    %% Service Integration
-    Embedding -.->|Uses| EmbedSvc
-    VectorSearch -.->|Uses| RetrieveCtx
-    Summary -.->|Uses| FinSummary
-    PromptBuilder -.->|Uses| AIService
-    AuthCtrl -.->|Uses| Middleware
+    AuthCtrl --> MongoDB
+    ChatCtrl --> MongoDB
+    ConvCtrl --> MongoDB
+    TxnCtrl --> MongoDB
 
-    %% Database Connections
-    AuthCtrl -->|Query/Insert| MongoDB
-    ChatCtrl -->|Query| MongoDB
-    ConvCtrl -->|CRUD| MongoDB
-    TxnCtrl -->|Query| MongoDB
+    Embedding --> Ollama
+    LLMStream --> Ollama
+    VectorSearch --> Qdrant
 
-    Embedding -->|API Call| Port11434
-    LLMStream -->|API Stream| Port11434
-    EmbedSvc -->|Embed API| Port11434
+    classDef client fill:#3498db,stroke:#2980b9,color:#fff,stroke-width:2px
+    classDef frontend fill:#e74c3c,stroke:#c0392b,color:#fff,stroke-width:2px
+    classDef backend fill:#27ae60,stroke:#229954,color:#fff,stroke-width:2px
+    classDef controllers fill:#16a085,stroke:#117a65,color:#fff,stroke-width:2px
+    classDef rag fill:#f39c12,stroke:#d68910,color:#fff,stroke-width:2px
+    classDef db fill:#2c3e50,stroke:#1a252f,color:#fff,stroke-width:2px
 
-    IngestTxn -->|Upsert| Port6333
-    VectorSearch -->|Search API| Port6333
-    RetrieveCtx -->|Query API| Port6333
-
-    %% Styling with gradients and colors
-    classDef clientLayer fill:#3498db,stroke:#2980b9,stroke-width:3px,color:#fff,font-weight:bold
-    classDef frontendLayer fill:#e74c3c,stroke:#c0392b,stroke-width:3px,color:#fff,font-weight:bold
-    classDef backendLayer fill:#27ae60,stroke:#229954,stroke-width:3px,color:#fff,font-weight:bold
-    classDef controllersBox fill:#16a085,stroke:#117a65,stroke-width:2px,color:#fff
-    classDef ragBox fill:#f39c12,stroke:#d68910,stroke-width:2px,color:#fff,font-weight:bold
-    classDef utilsBox fill:#8e44ad,stroke:#6c3483,stroke-width:2px,color:#fff
-    classDef dbLayer fill:#2c3e50,stroke:#1a252f,stroke-width:3px,color:#fff,font-weight:bold
-    classDef infraLayer fill:#34495e,stroke:#1a252f,stroke-width:2px,color:#fff
-    classDef mongoStyle fill:#13aa52,stroke:#0d6a2d,stroke-width:2px,color:#fff
-    classDef qdrantStyle fill:#ff6b35,stroke:#cc5829,stroke-width:2px,color:#fff
-    classDef ollamaStyle fill:#5b21b6,stroke:#3f0f7f,stroke-width:2px,color:#fff
-
-    class Client clientLayer
-    class Frontend frontendLayer
-    class Backend backendLayer
-    class Controllers controllersBox
-    class RAGPipeline ragBox
-    class Utils utilsBox
-    class Databases dbLayer
-    class ExternalServices infraLayer
-    class MongoDB mongoStyle
-    class Qdrant qdrantStyle
-    class Ollama ollamaStyle
+    class Client client
+    class Frontend frontend
+    class Backend backend
+    class Controllers controllers
+    class RAG rag
+    class Databases db
+    class MongoDB,Qdrant,Ollama db
 ```
 ---
 
