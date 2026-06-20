@@ -1,18 +1,22 @@
-import Conversation from "../models/Conversations.js";
+import { supabase } from "../config/supabase.js";
 
 export const getConversations = async (req, res) => {
     try {
         const userId = req.user?.id || req.query.userId || req.body.userId;
 
-        const conversations = await Conversation.find({ userId })
-        .select('_id title updatedAt messages')
-        .sort({ updatedAt: -1 })
-        .limit(15);
+        const { data: conversations, error } = await supabase
+            .from('conversations')
+            .select('id, title, updated_at, messages')
+            .eq('user_id', userId)
+            .order('updated_at', { ascending: false })
+            .limit(15);
+
+        if (error) throw error;
 
         const conversationsWithPreview = conversations.map(conv => ({
-            _id: conv._id,
+            _id: conv.id,
             title: conv.title,
-            updatedAt: conv.updatedAt,
+            updatedAt: conv.updated_at,
             lastMessage: conv.messages.length > 0 ? conv.messages[conv.messages.length - 1].content.substring(0, 15) : "",
         }));
 
@@ -20,7 +24,7 @@ export const getConversations = async (req, res) => {
     } catch (error) {
         console.error("Error fetching conversations:", error);
         res.status(500).json({ message: 'Failed to fetch conversations' })
-    }   
+    }
 }
 
 export const getConversationById = async (req, res) => {
@@ -28,12 +32,14 @@ export const getConversationById = async (req, res) => {
         const { conversationId } = req.params;
         const userId = req.user?.id || req.query.userId || req.body.userId;
 
-        const conversation = await Conversation.findOne({ 
-            _id: conversationId, 
-            userId 
-        })
+        const { data: conversation, error } = await supabase
+            .from('conversations')
+            .select('*')
+            .eq('id', conversationId)
+            .eq('user_id', userId)
+            .single();
 
-        if (!conversation) {
+        if (error || !conversation) {
             return res.status(404).json({ message: "Conversation not found" })
         }
 
@@ -49,14 +55,18 @@ export const createConversation = async (req, res) => {
         const userId = req.user?.id || req.query.userId || req.body.userId;
         const { title } = req.body;
 
-        const newConversation = new Conversation({
-            userId, 
-            title: title || "New Chat",
-            messages: []
-        })
+        const { data, error } = await supabase
+            .from('conversations')
+            .insert([{
+                user_id: userId,
+                title: title || "New Chat",
+                messages: []
+            }])
+            .select();
 
-        await newConversation.save();
-        res.status(201).json(newConversation)
+        if (error) throw error;
+
+        res.status(201).json(data[0])
     } catch (e) {
         console.error("Error creating conversation: ", e);
         res.status(500).json({ e: "Failed to create conversation" })
@@ -69,28 +79,45 @@ export const addConversation = async (req, res) => {
         const { conversationId } = req.params;
         const { role, content } = req.body;
 
-        const conversation = await Conversation.findOne({
-            _id: conversationId,
-            userId
-        })
+        const { data: conversation, error: fetchError } = await supabase
+            .from('conversations')
+            .select('*')
+            .eq('id', conversationId)
+            .eq('user_id', userId)
+            .single();
 
-        if (!conversation) {
+        if (fetchError || !conversation) {
             return res.status(400).json({ message: "Conversation not found" })
         }
 
-        conversation.messages.push({
-            role, 
-            content,
-            timestamp: new Date()
-        })
+        const updatedMessages = [
+            ...conversation.messages,
+            {
+                role,
+                content,
+                timestamp: new Date().toISOString()
+            }
+        ];
 
-        if (conversation.title === "New Chat" && role === "user" && conversation.messages.length == 1) {
-            conversation.title = content.substring(0, 15) + (content.length > 15 ? "..." : "");
+        let updatedTitle = conversation.title;
+        if (conversation.title === "New Chat" && role === "user" && updatedMessages.length == 1) {
+            updatedTitle = content.substring(0, 15) + (content.length > 15 ? "..." : "");
         }
 
-        await conversation.save()
-        res.json(conversation)
+        const { data, error: updateError } = await supabase
+            .from('conversations')
+            .update({
+                messages: updatedMessages,
+                title: updatedTitle,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', conversationId)
+            .select()
+            .single();
 
+        if (updateError) throw updateError;
+
+        res.json(data)
     } catch (e) {
         console.error("Error adding conversation: ", e);
         res.status(500).json({ e: "Failed to add conversation" })
@@ -102,14 +129,13 @@ export const deleteConversation = async (req, res) => {
     const { conversationId } = req.params;
     const userId = req.user?.id || req.body.userId;
     
-    const result = await Conversation.deleteOne({
-      _id: conversationId,
-      userId
-    });
+    const { error } = await supabase
+      .from('conversations')
+      .delete()
+      .eq('id', conversationId)
+      .eq('user_id', userId);
     
-    if (result.deletedCount === 0) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
+    if (error) throw error;
     
     res.json({ message: 'Conversation deleted successfully' });
   } catch (error) {
@@ -124,13 +150,15 @@ export const updateConversationTitle = async (req, res) => {
     const userId = req.user?.id || req.body.userId;
     const { title } = req.body;
     
-    const conversation = await Conversation.findOneAndUpdate(
-      { _id: conversationId, userId },
-      { title },
-      { new: true }
-    );
+    const { data: conversation, error } = await supabase
+      .from('conversations')
+      .update({ title, updated_at: new Date().toISOString() })
+      .eq('id', conversationId)
+      .eq('user_id', userId)
+      .select()
+      .single();
     
-    if (!conversation) {
+    if (error || !conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
     

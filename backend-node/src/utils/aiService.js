@@ -100,7 +100,7 @@ FinBot:`.trim();
   const prompt = buildPrompt(question, summary, transactionContext, conversationHistory);
 
   const response = await axios.post(`${process.env.OLLAMA_URL}/api/generate`, {
-    model: "qwen2.5:7b",
+    model: "mistral:latest",
     prompt,
     stream: true,
     options: {

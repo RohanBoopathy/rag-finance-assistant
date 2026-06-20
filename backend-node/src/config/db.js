@@ -1,11 +1,8 @@
-import dotenv from 'dotenv';
-import mongoose from 'mongoose';
-dotenv.config();
+import { supabase } from './supabase.js';
 
 const connectDB = async () => {
     try {
-        const conn = await mongoose.connect(process.env.MONGODB_URI)
-        console.log(`MongoDB Connected`);
+        console.log(`Supabase Client Initialized`);
     } catch (error) {
         console.error(`Error: ${error.message}`);
         process.exit(1);
@@ -13,3 +10,4 @@ const connectDB = async () => {
 }
 
 export default connectDB;
+export { supabase };
