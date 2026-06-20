@@ -1,48 +1,51 @@
-import { qdrantClient } from "../config/qdrant.js";
-
-const COLLECTION_NAME = "transactions";
+import { supabase } from "../config/supabase.js";
 
 /**
  * RETRIEVAL PIPELINE — Step 2 of 3
  *
- * Takes an already-embedded query vector and searches Qdrant for the
- * most semantically relevant transactions belonging to this user.
+ * Takes an already-embedded query vector and searches Postgres (pgvector)
+ * for the most semantically relevant transactions belonging to this user,
+ * via the `match_transactions` SQL function (see supabase/schema.sql).
  *
- * @param {string}   userId         - MongoDB userId string (used as filter)
+ * This replaces the old Qdrant `qdrantClient.search()` call. Same contract:
+ * filtered by userId, top-K results, minimum similarity score floor.
+ *
+ * @param {string}   userId         - User UUID (used as filter)
  * @param {number[]} queryEmbedding - 768-dim float array from embedText()
  * @param {number}   topK           - How many results to return (default: 8)
- * @returns {Promise<Object[]>}     - Array of transaction payload objects
+ * @returns {Promise<Object[]>}     - Array of transaction objects
  */
 export const retrieveRelevantTransactions = async (
   userId,
   queryEmbedding,
   topK = 8
 ) => {
-  const results = await qdrantClient.search(COLLECTION_NAME, {
-    vector: queryEmbedding,       // the embedded user query
-    limit: topK,                  // return top 8 closest matches
-    filter: {
-      must: [
-        {
-          key: "userId",          // ⚠️ CRITICAL: only search THIS user's data
-          match: {
-            value: userId.toString(),
-          },
-        },
-      ],
-    },
-    with_payload: true,           // return the metadata (amount, merchant, etc.)
-    with_vector: false,           // don't return the raw vectors (not needed)
+  const MIN_SCORE = 0.45;
+
+  const { data, error } = await supabase.rpc("match_transactions", {
+    p_user_id: userId,
+    p_query_embedding: queryEmbedding,
+    p_match_count: topK,
+    p_min_score: MIN_SCORE,
   });
 
-  // Each result has: { id, score, payload }
-  // We only need the payload (transaction metadata)
-  // Filter out low-relevance results to avoid injecting noise into the prompt
-  const MIN_SCORE = 0.45;
-  return results
-    .filter((r) => r.score >= MIN_SCORE)
-    .map((r) => ({
-      ...r.payload,
-      relevanceScore: r.score,      // cosine similarity score (0–1), useful for debugging
-    }));
+  if (error) {
+    console.error("Error in match_transactions RPC:", error);
+    throw error;
+  }
+
+  // Map snake_case DB columns -> the camelCase shape the rest of the
+  // app expects (same shape aiService.js / financialSummary.js consume).
+  return data.map((row) => ({
+    _id: row.id,
+    userId: row.user_id,
+    amount: Number(row.amount),
+    category: row.category,
+    merchant: row.merchant,
+    name: row.name,
+    type: row.type,
+    isSuspicious: row.is_suspicious,
+    timestamp: row.timestamp,
+    relevanceScore: row.similarity, // cosine similarity score (0–1)
+  }));
 };

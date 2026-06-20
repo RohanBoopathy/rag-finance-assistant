@@ -1,6 +1,6 @@
-import mongoose from "mongoose";
-import Conversation from "../models/Conversations.js";
-import Transaction from "../models/Transactions.js";
+import { supabase } from "../config/supabase.js";
+import { TABLE_NAME as ConversationTable } from "../models/Conversations.js";
+import { TABLE_NAME as TransactionTable } from "../models/Transactions.js";
 import { embedText } from "../utils/embedService.js";
 import { generateAIResponse } from "../utils/aiService.js";
 import { retrieveRelevantTransactions } from "../utils/retrieveContext.js";
@@ -15,14 +15,6 @@ export const chatWithAI = async (req, res) => {
     return res.status(400).json({ error: "User ID and message are required" });
   }
 
-  // Convert userId safely
-  let userObjectId;
-  try {
-    userObjectId = new mongoose.Types.ObjectId(userId);
-  } catch (err) {
-    return res.status(400).json({ error: "Invalid User ID format" });
-  }
-
   // ───────── SSE HEADERS ─────────
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -33,33 +25,46 @@ export const chatWithAI = async (req, res) => {
     let conversation;
 
     // ───────── LOAD OR CREATE CONVERSATION ─────────
-    if (conversationId && mongoose.Types.ObjectId.isValid(conversationId)) {
-      conversation = await Conversation.findOne({
-        _id: conversationId,
-        userId: userObjectId,
-      });
+    if (conversationId) {
+      const { data: convData, error: convError } = await supabase
+        .from(ConversationTable)
+        .select('*')
+        .eq('id', conversationId)
+        .eq('user_id', userId)
+        .single();
 
-      if (!conversation) {
+      if (convError || !convData) {
         res.write(`data: ${JSON.stringify({ error: "Conversation not found" })}\n\n`);
         return res.end();
       }
+      conversation = convData;
     } else {
-      conversation = new Conversation({
-        userId: userObjectId,
-        title: message.substring(0, 25),
-        messages: [],
-      });
+      const { data: newConv, error: createError } = await supabase
+        .from(ConversationTable)
+        .insert({
+          user_id: userId,
+          title: message.substring(0, 25),
+          messages: [],
+        })
+        .select()
+        .single();
+
+      if (createError) throw createError;
+      conversation = newConv;
     }
 
     // Get recent history BEFORE pushing current user message
-    const recentHistory = conversation.messages.slice(-4);
+    const recentHistory = (conversation.messages || []).slice(-4);
 
-    // Save user message
-    conversation.messages.push({
-      role: "user",
-      content: message,
-      timestamp: new Date(),
-    });
+    // Prepare updated messages
+    const updatedMessages = [
+      ...(conversation.messages || []),
+      {
+        role: "user",
+        content: message,
+        timestamp: new Date().toISOString(),
+      }
+    ];
 
     // ───────── INTENT DETECTION ─────────
     const temporalIntent = detectTemporalIntent(message);
@@ -68,55 +73,76 @@ export const chatWithAI = async (req, res) => {
     let summary;
 
     if (temporalIntent.isTemporal) {
-      // Temporal query — bypass Qdrant, use date-sorted MongoDB results
-      const sortOrder = temporalIntent.order === "asc" ? 1 : -1;
+      // Temporal query — bypass Qdrant, use date-sorted Supabase results
+      const order = temporalIntent.order === "asc" ? false : true; // false for asc (default), true for desc
 
-      const [temporalTxns, allTransactions] = await Promise.all([
-        Transaction.find({ userId: userObjectId })
-          .sort({ timestamp: sortOrder })
-          .limit(temporalIntent.count)
-          .lean(),
-        Transaction.find({ userId: userObjectId })
-          .sort({ timestamp: -1 })
+      const [temporalTxnsResult, allTransactionsResult] = await Promise.all([
+        supabase
+          .from(TransactionTable)
+          .select('*')
+          .eq('user_id', userId)
+          .order('timestamp', { ascending: !order })
+          .limit(temporalIntent.count),
+        supabase
+          .from(TransactionTable)
+          .select('*')
+          .eq('user_id', userId)
+          .order('timestamp', { ascending: false })
           .limit(100),
       ]);
 
-      relevantTransactions = temporalTxns.map((tx) => ({
+      if (temporalTxnsResult.error) throw temporalTxnsResult.error;
+      if (allTransactionsResult.error) throw allTransactionsResult.error;
+
+      relevantTransactions = temporalTxnsResult.data.map((tx) => ({
         ...tx,
         relevanceScore: 1.0,
       }));
-      summary = buildFinancialSummary(allTransactions);
+      summary = buildFinancialSummary(allTransactionsResult.data);
     } else {
       // ───────── RAG PIPELINE (parallelized) ─────────
-      const [queryEmbedding, allTransactions] = await Promise.all([
+      const [queryEmbedding, allTransactionsResult] = await Promise.all([
         embedText(message),
-        Transaction.find({ userId: userObjectId })
-          .sort({ timestamp: -1 })
+        supabase
+          .from(TransactionTable)
+          .select('*')
+          .eq('user_id', userId)
+          .order('timestamp', { ascending: false })
           .limit(100),
       ]);
 
+      if (allTransactionsResult.error) throw allTransactionsResult.error;
+
       [relevantTransactions, summary] = await Promise.all([
-        retrieveRelevantTransactions(userObjectId, queryEmbedding),
-        Promise.resolve(buildFinancialSummary(allTransactions)),
+        retrieveRelevantTransactions(userId, queryEmbedding),
+        Promise.resolve(buildFinancialSummary(allTransactionsResult.data)),
       ]);
     }
 
     // Send conversationId early to frontend
     res.write(
-      `data: ${JSON.stringify({ conversationId: conversation._id })}\n\n`
+      `data: ${JSON.stringify({ conversationId: conversation.id })}\n\n`
     );
 
     // ───────── STREAM AI RESPONSE ─────────
     const aiResponse = await generateAIResponse(relevantTransactions, message, summary, res, recentHistory);
 
     // Save assistant message after streaming completes
-    conversation.messages.push({
-      role: "assistant",
-      content: aiResponse,
-      timestamp: new Date(),
-    });
+    const finalMessages = [
+      ...updatedMessages,
+      {
+        role: "assistant",
+        content: aiResponse,
+        timestamp: new Date().toISOString(),
+      }
+    ];
 
-    await conversation.save();
+    const { error: updateError } = await supabase
+      .from(ConversationTable)
+      .update({ messages: finalMessages })
+      .eq('id', conversation.id);
+      
+    if (updateError) throw updateError;
 
     res.write(`data: ${JSON.stringify({ saved: true })}\n\n`);
   } catch (error) {
