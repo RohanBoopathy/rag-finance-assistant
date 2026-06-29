@@ -4,8 +4,8 @@ import { Bot } from 'lucide-react'
 
 const TypingIndicator = () => {
   return (
-    <div className="flex gap-3">
-      <div className="flex shrink-0 w-8 h-8 rounded-full items-center justify-center bg-purple-600">
+    <div className="flex gap-3 justify-center">
+      {/* <div className="flex shrink-0 w-8 h-8 rounded-full items-center justify-center bg-purple-600">
         <Bot className="w-5 h-5 text-white" />
       </div>
 
@@ -15,7 +15,8 @@ const TypingIndicator = () => {
           <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
           <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
         </div>
-      </div>
+      </div> */}  
+      <span className="text-center">Typing...</span>
     </div>
   )
 }
